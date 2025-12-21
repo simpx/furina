@@ -1,7 +1,7 @@
 import os
 import sys
 import time
-import packice.v2.interface.sdk as packice
+import packice.interface.sdk as packice
 
 def demo_in_process():
     print(f"\n{'='*20} Running Demo: In-Process (DuckDB Style) {'='*20}")
@@ -87,8 +87,8 @@ def main():
 
     # Check if servers are running
     print("\nNote: For Networked demos, ensure you have started the servers:")
-    print("  1. python3 -m packice.v2.interface.cli --impl fs --transport http --port 8080")
-    print("  2. python3 -m packice.v2.interface.cli --impl mem --transport uds --socket /tmp/packice.sock")
+    print("  1. python3 -m packice.interface.cli --impl fs --transport http --port 8080")
+    print("  2. python3 -m packice.interface.cli --impl mem --transport uds --socket /tmp/packice.sock")
     print("Waiting 2 seconds...")
     time.sleep(2)
 

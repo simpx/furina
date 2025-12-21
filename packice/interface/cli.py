@@ -4,7 +4,7 @@ import sys
 from ..server.node import Node
 
 def main():
-    parser = argparse.ArgumentParser(description="PackIce v2 Node")
+    parser = argparse.ArgumentParser(description="PackIce Node")
     parser.add_argument("--impl", choices=["fs", "mem"], default="fs", help="Blob implementation")
     parser.add_argument("--transport", choices=["http", "uds"], default="http", help="Transport protocol")
     parser.add_argument("--port", type=int, default=8080, help="HTTP port")
