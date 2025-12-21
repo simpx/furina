@@ -1,15 +1,15 @@
 import requests
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 from .base import TransportClient
 
 class HttpTransportClient(TransportClient):
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')
 
-    def acquire(self, objid: Optional[str], intent: str, ttl: Optional[float] = None, meta: Optional[Dict] = None) -> Tuple[Dict, Any]:
+    def acquire(self, object_id: Optional[str], intent: str, ttl: Optional[float] = None, meta: Optional[Dict] = None) -> Tuple[Dict, List[Any]]:
         url = f"{self.base_url}/acquire"
         payload = {
-            "objid": objid,
+            "object_id": object_id,
             "intent": intent,
             "ttl_seconds": ttl,
             "meta": meta
@@ -19,8 +19,8 @@ class HttpTransportClient(TransportClient):
             raise RuntimeError(f"Acquire failed: {resp.text}")
             
         data = resp.json()
-        # Handle is the path string
-        return data, data['attachment_handle']
+        # Handles are paths
+        return data, data['handles']
 
     def seal(self, lease_id: str) -> None:
         url = f"{self.base_url}/seal"

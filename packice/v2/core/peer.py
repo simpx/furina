@@ -2,53 +2,54 @@ import uuid
 import time
 from typing import Dict, Optional, Callable, Any, Tuple
 from .object import Object, ObjectState
-from .lease import Lease, LeaseMode
+from .lease import Lease, AccessType
 from .blob import Blob
 
-BlobFactory = Callable[[str], Blob]  # objid -> Blob
-LeaseFactory = Callable[[str, LeaseMode, Optional[float]], Lease] # objid, mode, ttl -> Lease
+BlobFactory = Callable[[str], Blob]  # object_id -> Blob
+LeaseFactory = Callable[[str, AccessType, Optional[float]], Lease] # object_id, access, ttl -> Lease
 
-class Engine:
+class Peer:
     def __init__(self, blob_factory: BlobFactory, lease_factory: LeaseFactory):
         self.blob_factory = blob_factory
         self.lease_factory = lease_factory
         self.objects: Dict[str, Object] = {}
         self.leases: Dict[str, Lease] = {}
 
-    def acquire(self, objid: Optional[str], mode: LeaseMode, ttl: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Tuple[Lease, Object]:
+    def acquire(self, object_id: Optional[str], access: AccessType, ttl: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Tuple[Lease, Object]:
         # Check for expiration of existing leases first (lazy cleanup)
         self._cleanup_expired_leases()
 
-        if objid is None:
-            if mode == LeaseMode.READ:
-                raise ValueError("Cannot acquire read lease without objid")
-            objid = str(uuid.uuid4())
+        if object_id is None:
+            if access == AccessType.READ:
+                raise ValueError("Cannot acquire read lease without object_id")
+            object_id = str(uuid.uuid4())
 
-        obj = self.objects.get(objid)
+        obj = self.objects.get(object_id)
 
-        if mode == LeaseMode.CREATE:
+        if access == AccessType.CREATE:
             if obj is not None:
                 # If object exists, we can't create it again unless it's a "restart" or we handle it.
                 # For simplicity, if it exists, fail.
-                raise ValueError(f"Object {objid} already exists")
+                raise ValueError(f"Object {object_id} already exists")
             
             # Create new object
-            blob = self.blob_factory(objid)
-            obj = Object(objid, blob, meta)
-            self.objects[objid] = obj
+            # For CREATE, we create the first blob
+            blob = self.blob_factory(object_id)
+            obj = Object(object_id, [blob], meta)
+            self.objects[object_id] = obj
         
-        elif mode == LeaseMode.READ:
+        elif access == AccessType.READ:
             if obj is None:
-                raise KeyError(f"Object {objid} not found")
+                raise KeyError(f"Object {object_id} not found")
             if not obj.is_sealed():
                 # Can we read while creating? 
                 # v0 design says: "Objects are writable only while in CREATING... SEALED objects are immutable."
                 # Usually read is allowed on SEALED.
                 # If it's CREATING, maybe we can't read yet?
                 # v0: "For read intent, may fail if the node lacks a sealed copy"
-                raise ValueError(f"Object {objid} is not sealed yet")
+                raise ValueError(f"Object {object_id} is not sealed yet")
 
-        lease = self.lease_factory(objid, mode, ttl)
+        lease = self.lease_factory(object_id, access, ttl)
         self.leases[lease.lease_id] = lease
         
         # Return lease and the object
@@ -56,12 +57,12 @@ class Engine:
 
     def seal(self, lease_id: str):
         lease = self._get_active_lease(lease_id)
-        if lease.mode != LeaseMode.CREATE:
+        if lease.access != AccessType.CREATE:
             raise ValueError("Cannot seal a read lease")
         
-        obj = self.objects.get(lease.objid)
+        obj = self.objects.get(lease.object_id)
         if obj is None:
-             raise KeyError(f"Object {lease.objid} not found for lease {lease_id}")
+             raise KeyError(f"Object {lease.object_id} not found for lease {lease_id}")
 
         obj.seal()
         # In a real system, we might notify waiting readers here

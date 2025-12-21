@@ -2,10 +2,10 @@ import argparse
 import os
 import time
 import sys
-from .core.engine import Engine
+from .core.peer import Peer
 from .impl.fs_blob import FileBlob
 from .impl.mem_blob import MemBlob
-from .impl.memory_lease import InMemoryLease
+from .impl.memory_lease import MemoryLease
 from .transport.http_server import HttpServer
 from .transport.uds_server import UdsServer
 
@@ -25,31 +25,30 @@ def main():
         os.makedirs(data_dir, exist_ok=True)
         print(f"Using FileBlob implementation in {data_dir}")
         
-        def blob_factory(objid: str):
-            path = os.path.join(data_dir, objid)
+        def blob_factory(object_id: str):
+            path = os.path.join(data_dir, object_id)
             return FileBlob(path)
             
     elif args.impl == "mem":
         print("Using MemBlob implementation")
         
-        def blob_factory(objid: str):
-            return MemBlob(objid)
+        def blob_factory(object_id: str):
+            return MemBlob(object_id)
     
     # 2. Setup Lease Factory
-    # Currently only InMemoryLease is supported, but this structure allows for future extension
-    def lease_factory(objid, mode, ttl):
-        return InMemoryLease(objid, mode, ttl)
+    def lease_factory(object_id, access, ttl):
+        return MemoryLease(object_id, access, ttl)
 
-    # 3. Initialize Engine
-    engine = Engine(blob_factory, lease_factory)
+    # 3. Initialize Peer
+    peer = Peer(blob_factory, lease_factory)
     
     # 4. Start Server
     server = None
     if args.transport == "http":
-        server = HttpServer(engine, port=args.port)
+        server = HttpServer(peer, port=args.port)
         server.start()
     elif args.transport == "uds":
-        server = UdsServer(engine, socket_path=args.socket)
+        server = UdsServer(peer, socket_path=args.socket)
         server.start()
         
     print("Node started. Press Ctrl+C to stop.")

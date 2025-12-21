@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from .blob import Blob
 
 class ObjectState(Enum):
@@ -7,17 +7,21 @@ class ObjectState(Enum):
     SEALED = "SEALED"
 
 class Object:
-    def __init__(self, objid: str, blob: Blob, meta: Optional[Dict[str, Any]] = None):
-        self.objid = objid
-        self.blob = blob
+    def __init__(self, object_id: str, blobs: Optional[List[Blob]] = None, meta: Optional[Dict[str, Any]] = None):
+        self.object_id = object_id
+        self.blobs = blobs or []
         self.meta = meta or {}
         self.state = ObjectState.CREATING
         self.sealed_size: Optional[int] = None
 
+    def add_blob(self, blob: Blob):
+        self.blobs.append(blob)
+
     def seal(self):
         if self.state == ObjectState.SEALED:
             return
-        self.blob.seal()
+        for blob in self.blobs:
+            blob.seal()
         self.state = ObjectState.SEALED
         # In a real implementation, we might want to get the size from the blob
         # self.sealed_size = ... 

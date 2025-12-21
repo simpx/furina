@@ -2,7 +2,7 @@ import socket
 import json
 import os
 import array
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 from .base import TransportClient
 
 class UdsTransportClient(TransportClient):
@@ -22,31 +22,32 @@ class UdsTransportClient(TransportClient):
                 fds.frombytes(cmsg_data[:len(cmsg_data) - (len(cmsg_data) % fds.itemsize)])
         return msg, list(fds)
 
-    def acquire(self, objid: Optional[str], intent: str, ttl: Optional[float] = None, meta: Optional[Dict] = None) -> Tuple[Dict, Any]:
+    def acquire(self, object_id: Optional[str], intent: str, ttl: Optional[float] = None, meta: Optional[Dict] = None) -> Tuple[Dict, List[Any]]:
         sock = self._connect()
         try:
             req = {
                 "command": "acquire",
-                "objid": objid,
+                "object_id": object_id,
                 "intent": intent,
                 "ttl_seconds": ttl,
                 "meta": meta
             }
             sock.sendall(json.dumps(req).encode('utf-8'))
             
-            msg, fds = self._recv_fds(sock, 4096, 1)
+            # Assume max 16 FDs for now
+            msg, fds = self._recv_fds(sock, 4096, 16)
             resp = json.loads(msg.decode('utf-8'))
             
             if resp.get("status") == "error":
                 raise RuntimeError(resp.get("message"))
                 
-            handle = None
+            handles = []
             if fds:
-                handle = fds[0]
+                handles = fds
             else:
-                handle = resp.get("attachment_handle")
+                handles = resp.get("handles", [])
                 
-            return resp, handle
+            return resp, handles
         finally:
             sock.close()
 

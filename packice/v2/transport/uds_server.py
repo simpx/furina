@@ -4,13 +4,13 @@ import json
 import struct
 import threading
 import array
-from typing import Optional
-from ..core.engine import Engine
-from ..core.lease import LeaseMode
+from typing import Optional, List
+from ..core.peer import Peer
+from ..core.lease import AccessType
 
 class UdsServer:
-    def __init__(self, engine: Engine, socket_path: str = "/tmp/packice.sock"):
-        self.engine = engine
+    def __init__(self, peer: Peer, socket_path: str = "/tmp/packice.sock"):
+        self.peer = peer
         self.socket_path = socket_path
         self.server_socket = None
         self.running = False
@@ -74,38 +74,45 @@ class UdsServer:
         cmd = data.get('command')
         
         if cmd == 'acquire':
-            objid = data.get('objid') # Can be None
+            object_id = data.get('object_id') # Can be None
             intent = data['intent']
             ttl = data.get('ttl_seconds') # Optional for UDS, maybe connection bound?
             meta = data.get('meta')
             
-            mode = LeaseMode.CREATE if intent == 'create' else LeaseMode.READ
-            lease, obj = self.engine.acquire(objid, mode, ttl, meta)
+            access = AccessType.CREATE if intent == 'create' else AccessType.READ
+            lease, obj = self.peer.acquire(object_id, access, ttl, meta)
             
             resp = {
                 "status": "ok",
                 "lease_id": lease.lease_id,
-                "objid": lease.objid
+                "object_id": lease.object_id
             }
             
-            # Check if we need to pass FD
-            handle = obj.blob.get_handle()
-            if isinstance(handle, int):
-                # It's an FD
-                self._send_response_with_fd(sock, resp, handle)
+            # Check if we need to pass FDs
+            handles = [b.get_handle() for b in obj.blobs]
+            fds = []
+            paths = []
+            
+            for h in handles:
+                if isinstance(h, int):
+                    fds.append(h)
+                else:
+                    paths.append(h)
+            
+            if fds:
+                self._send_response_with_fds(sock, resp, fds)
             else:
-                # It's a path or something else
-                resp["attachment_handle"] = handle
+                resp["handles"] = paths
                 self._send_response(sock, resp)
 
         elif cmd == 'seal':
             lease_id = data['lease_id']
-            self.engine.seal(lease_id)
+            self.peer.seal(lease_id)
             self._send_response(sock, {"status": "sealed"})
 
         elif cmd == 'release':
             lease_id = data['lease_id']
-            self.engine.release(lease_id)
+            self.peer.release(lease_id)
             self._send_response(sock, {"status": "released"})
         
         else:
@@ -118,7 +125,7 @@ class UdsServer:
     def _send_error(self, sock: socket.socket, msg: str):
         self._send_response(sock, {"status": "error", "message": msg})
 
-    def _send_response_with_fd(self, sock: socket.socket, data: dict, fd: int):
+    def _send_response_with_fds(self, sock: socket.socket, data: dict, fds: List[int]):
         msg = json.dumps(data).encode('utf-8')
-        ancillary = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", [fd]))]
+        ancillary = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))]
         sock.sendmsg([msg], ancillary)

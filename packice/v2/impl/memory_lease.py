@@ -1,14 +1,14 @@
 import time
 import uuid
 from typing import Optional, Any
-from ..core.lease import Lease, LeaseMode
+from ..core.lease import Lease, AccessType
 from ..core.object import Object
 
-class InMemoryLease(Lease):
-    def __init__(self, objid: str, mode: LeaseMode, ttl: Optional[float] = None):
+class MemoryLease(Lease):
+    def __init__(self, object_id: str, access: AccessType, ttl: Optional[float] = None):
         self._lease_id = str(uuid.uuid4())
-        self._objid = objid
-        self._mode = mode
+        self._object_id = object_id
+        self._access = access
         self._ttl = ttl
         self.created_at = time.time()
         self.last_renewed_at = self.created_at
@@ -19,12 +19,12 @@ class InMemoryLease(Lease):
         return self._lease_id
 
     @property
-    def objid(self) -> str:
-        return self._objid
+    def object_id(self) -> str:
+        return self._object_id
 
     @property
-    def mode(self) -> LeaseMode:
-        return self._mode
+    def access(self) -> AccessType:
+        return self._access
 
     @property
     def ttl(self) -> Optional[float]:

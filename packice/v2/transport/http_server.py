@@ -2,12 +2,12 @@ import json
 import http.server
 import threading
 from typing import Optional
-from ..core.engine import Engine
-from ..core.lease import LeaseMode
+from ..core.peer import Peer
+from ..core.lease import AccessType
 
 class RequestHandler(http.server.BaseHTTPRequestHandler):
-    def __init__(self, engine: Engine, *args, **kwargs):
-        self.engine = engine
+    def __init__(self, peer: Peer, *args, **kwargs):
+        self.peer = peer
         super().__init__(*args, **kwargs)
 
     def do_POST(self):
@@ -25,20 +25,22 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             length = int(self.headers.get('content-length', 0))
             data = json.loads(self.rfile.read(length))
             
-            objid = data.get('objid') # Can be None
+            object_id = data.get('object_id') # Can be None
             intent = data['intent'] # "create" or "read"
             ttl = data.get('ttl_seconds', 60)
             meta = data.get('meta')
 
-            mode = LeaseMode.CREATE if intent == 'create' else LeaseMode.READ
+            access = AccessType.CREATE if intent == 'create' else AccessType.READ
             
-            lease, obj = self.engine.acquire(objid, mode, ttl, meta)
+            lease, obj = self.peer.acquire(object_id, access, ttl, meta)
+            
+            handles = [b.get_handle() for b in obj.blobs]
             
             response = {
                 "lease_id": lease.lease_id,
-                "objid": lease.objid,
+                "object_id": lease.object_id,
                 "intent": intent,
-                "attachment_handle": obj.blob.get_handle(), # Path for FS
+                "handles": handles, # List of paths
                 "ttl_seconds": ttl
             }
             
@@ -52,7 +54,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             lease_id = data['lease_id']
             
-            self.engine.seal(lease_id)
+            self.peer.seal(lease_id)
             self.send_json(200, {"status": "sealed"})
         except Exception as e:
             self.send_json(400, {"error": str(e)})
@@ -63,7 +65,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             lease_id = data['lease_id']
             
-            self.engine.release(lease_id)
+            self.peer.release(lease_id)
             self.send_json(200, {"status": "released"})
         except Exception as e:
             self.send_json(400, {"error": str(e)})
@@ -75,15 +77,15 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode('utf-8'))
 
 class HttpServer:
-    def __init__(self, engine: Engine, port: int = 8080):
-        self.engine = engine
+    def __init__(self, peer: Peer, port: int = 8080):
+        self.peer = peer
         self.port = port
         self.server = None
         self.thread = None
 
     def start(self):
         def handler_factory(*args, **kwargs):
-            return RequestHandler(self.engine, *args, **kwargs)
+            return RequestHandler(self.peer, *args, **kwargs)
         
         self.server = http.server.HTTPServer(('0.0.0.0', self.port), handler_factory)
         print(f"HTTP Server listening on port {self.port}")

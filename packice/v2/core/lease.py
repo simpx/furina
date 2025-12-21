@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Optional, Any
 from .object import Object
 
-class LeaseMode(Enum):
+class AccessType(Enum):
     READ = "READ"
     CREATE = "CREATE"
 
@@ -19,12 +19,12 @@ class Lease(ABC):
 
     @property
     @abstractmethod
-    def objid(self) -> str:
+    def object_id(self) -> str:
         pass
 
     @property
     @abstractmethod
-    def mode(self) -> LeaseMode:
+    def access(self) -> AccessType:
         pass
 
     @property
