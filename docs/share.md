@@ -47,6 +47,60 @@ Packice 是一个灵活的、"Batteries-included" 的 P2P 缓存系统。
     *   **Server 端**: 管理 Blob (Header, TTL, Sealing)。
     *   **Client 端**: 只持有 View (Read/Write)，互不干扰。
 
+### 架构关系图 (Architecture Diagram)
+
+```text
++-----------------------------------------------------------------------+
+|                            Client Process                             |
+|                                                                       |
+|   +--------+                           +--------------------------+   |
+|   | Client | ------------------------> |         BlobView         |   |
+|   +----+---+       (Data Access)       +------------+-------------+   |
+|        |                                            |                 |
+|        | 1. Request                                 | 2. Direct IO    |
+|        v                                            v                 |
++--------|--------------------------------------------|-----------------+
+         |                                            |
++--------|--------------------------------------------|-----------------+
+|        v                                            v                 |
+|   +--------+       manages             +------------+-------------+   |
+|   |  Peer  | ------------------------> |          Object          |   |
+|   | (Tier) |                           +------------+-------------+   |
+|   +----+---+                                        | manages         |
+|        |                                            v                 |
+|        | grants                        +------------+-------------+   |
+|        +-----------------------------> |           Blob           |   |
+|        |           (Lease)             |      (MemoryBlob)        |   |
+|        |                               +--------------------------+   |
+|        |                                                              |
+|        | 3. Evict / Offload (acts as Client)                          |
+|        v                                                              |
+|   +--------+                           +--------------------------+   |
+|   | Client | ------------------------> |         BlobView         |   |
+|   | (Sync) |                           +------------+-------------+   |
+|   +----+---+                                        |                 |
+|                                                     |                 |
+| Peer Process 1 (Tiered/Hot)                         |                 |
++--------|--------------------------------------------|-----------------+
+         |                                            |                 |
+         | 4. Request (Store to Disk)                 | 5. File IO      |
+         v                                            v                 |
++--------|--------------------------------------------|-----------------+
+|        v                                            |                 |
+|   +--------+       manages             +------------+-------------+   |
+|   |  Peer  | ------------------------> |          Object          |   |
+|   | (Cold) |                           +------------+-------------+   |
+|   +--------+                                        | manages         |
+|                                                     v                 |
+|                                        +------------+-------------+   |
+|                                        |           Blob           |   |
+|                                        |      (FileBlob)          |   |
+|                                        +--------------------------+   |
+|                                                                       |
+| Peer Process 2 (Cold Storage)                                         |
++-----------------------------------------------------------------------+
+```
+
 ---
 
 ## Part 3: 核心流程 (The Workflow)
@@ -137,6 +191,23 @@ with client.get(obj.id) as obj:
 
 ---
 
+## Part 7: 现状与规划 (Status & Roadmap)
+
+### 1. 当前状态 (Current Status)
+*   **Core**: 核心抽象 (Peer, Lease, Object, Blob) 初步跑通
+*   **Backend**: 已支持 Memory (开发调试) 和 SharedFS (POC状态)。
+*   **Client**: Python SDK 完成，缺少集成层逻辑
+
+### 2. 待办事项 (TODOs)
+*   **性能**: 引入更高效的object pool和object transfer能力，代替直接在Python层做两个peer间object的复制
+*   **P2P层**: 访问基于redis的tracker、object发现等工作
+*   **Lease异常处理**: 连接异常后的各种错误处理
+*   **Object生命周期管理**: 生产可用的Tiered Peer以及object生命周期管理
+*   **Object Metrics**: 生产可用的Metrics以及对应的使用
+*   **等等**
+
+---
+
 ## Q&A 准备
 
 *   **Q: 为什么要区分 Lease TTL 和 Object TTL？**
@@ -145,3 +216,5 @@ with client.get(obj.id) as obj:
     *   A: 为了性能。Peer 只负责控制面（Control Plane），数据面（Data Plane）应该尽可能直接（Zero-copy, Direct IO）。
 *   **Q: SharedFS 和普通 FS 有什么区别？**
     *   A: SharedFS 假设多个进程/节点挂载了同一个目录，所以它需要处理跨进程的 Header 同步、锁管理以及基于文件 mtime 的 GC。
+*   **Q：为什么用Python？**
+    *   A：Python实现胶水业务代码非常合适，Packice所在的就是上接应用，下接高效object pool的胶水层。此外，“life is short, I use Python”
