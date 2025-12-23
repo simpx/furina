@@ -19,15 +19,21 @@ class TieredPeer(Peer):
     def acquire(self, object_id: Optional[str], access: AccessType, ttl: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Tuple[Lease, Object]:
         # 1. READ: Check Hot, then Cold
         if access == AccessType.READ:
-            if object_id in self.hot.objects:
+            # Try hot first
+            try:
+                lease, obj = self.hot.acquire(object_id, access, ttl, meta)
                 self._update_lru(object_id)
-                return self.hot.acquire(object_id, access, ttl, meta)
-            elif object_id in self.cold.objects:
-                # Found in cold. 
-                # Optional: Promote to hot? For now, just read from cold.
+                return lease, obj
+            except (KeyError, ValueError):
+                pass
+            
+            # Try cold
+            try:
                 return self.cold.acquire(object_id, access, ttl, meta)
-            else:
-                raise KeyError(f"Object {object_id} not found in tiered storage")
+            except (KeyError, ValueError):
+                pass
+                
+            raise KeyError(f"Object {object_id} not found in tiered storage")
 
         # 2. CREATE: Always create in Hot
         elif access == AccessType.CREATE:
@@ -42,17 +48,21 @@ class TieredPeer(Peer):
 
         # 3. WRITE: Check Hot, then Cold
         elif access == AccessType.WRITE:
-            if object_id in self.hot.objects:
-                # If we are writing (modifying/deleting) in hot, we should probably update LRU or remove it?
-                # If the intent is to delete, we remove from LRU in discard().
-                # If the intent is to modify, we update LRU.
-                # Since we don't know yet, let's update LRU for now.
+            # Try hot first
+            try:
+                lease, obj = self.hot.acquire(object_id, access, ttl, meta)
                 self._update_lru(object_id)
-                return self.hot.acquire(object_id, access, ttl, meta)
-            elif object_id in self.cold.objects:
+                return lease, obj
+            except (KeyError, ValueError):
+                pass
+            
+            # Try cold
+            try:
                 return self.cold.acquire(object_id, access, ttl, meta)
-            else:
-                raise KeyError(f"Object {object_id} not found in tiered storage")
+            except (KeyError, ValueError):
+                pass
+                
+            raise KeyError(f"Object {object_id} not found in tiered storage")
             
         raise ValueError(f"Unknown access type: {access}")
 
@@ -60,29 +70,48 @@ class TieredPeer(Peer):
         # We need to find which peer owns this lease
         # A simple way is to try both, or track it.
         # Since lease_ids are usually unique, we can try hot first.
-        if lease_id in self.hot.leases:
+        try:
             self.hot.seal(lease_id)
-        elif lease_id in self.cold.leases:
+            return
+        except (KeyError, ValueError):
+            pass
+            
+        try:
             self.cold.seal(lease_id)
-        else:
-            raise KeyError(f"Lease {lease_id} not found")
+            return
+        except (KeyError, ValueError):
+            pass
+            
+        raise KeyError(f"Lease {lease_id} not found")
 
     def discard(self, lease_id: str):
-        if lease_id in self.hot.leases:
-            lease = self.hot.leases[lease_id]
-            if lease.object_id in self.lru_list:
-                self.lru_list.remove(lease.object_id)
-            self.hot.discard(lease_id)
-        elif lease_id in self.cold.leases:
+        try:
+            # Try to get lease info to find object_id for LRU removal
+            # This is tricky because discard() usually consumes the lease.
+            # We might need to peek or rely on the peer to tell us.
+            # But Peer.discard() doesn't return info.
+            # We can try to find the lease in hot.leases first.
+            if lease_id in self.hot.leases:
+                lease = self.hot.leases[lease_id]
+                if lease.object_id in self.lru_list:
+                    self.lru_list.remove(lease.object_id)
+                self.hot.discard(lease_id)
+                return
+        except Exception:
+            pass
+
+        try:
             self.cold.discard(lease_id)
-        else:
-            raise KeyError(f"Lease {lease_id} not found")
+            return
+        except Exception:
+            pass
+            
+        raise KeyError(f"Lease {lease_id} not found")
 
     def release(self, lease_id: str):
-        if lease_id in self.hot.leases:
-            self.hot.release(lease_id)
-        elif lease_id in self.cold.leases:
-            self.cold.release(lease_id)
+        # Try both, safe to ignore if not found in one
+        self.hot.release(lease_id)
+        self.cold.release(lease_id)
 
     def _update_lru(self, object_id: str):
         if object_id in self.lru_list:
@@ -98,23 +127,27 @@ class TieredPeer(Peer):
         print(f"[TieredPeer] Evicting {object_id} from Hot to Cold...")
         
         # 1. Read from Hot
-        # We need a lease to read. Since we are the system, we acquire a READ lease.
         try:
             read_lease, hot_obj = self.hot.acquire(object_id, AccessType.READ)
         except KeyError:
-            # Object might have been deleted concurrently
             return
 
-        # Assuming single blob for simplicity
-        blob_data = hot_obj.blobs[0].read()
+        blob_data = hot_obj.blobs[0].read(offset=0)
         self.hot.release(read_lease.lease_id)
 
         # 2. Write to Cold
-        # We acquire a CREATE lease on Cold with the SAME object_id
         create_lease, cold_obj = self.cold.acquire(object_id, AccessType.CREATE)
-        cold_obj.blobs[0].write(blob_data)
         
-        # Seal the cold object
+        cold_obj.blobs[0].truncate(len(blob_data))
+        
+        # MemBlob.file is a file object, we can seek.
+        if hasattr(cold_obj.blobs[0], 'file'):
+             cold_obj.blobs[0].file.seek(0)
+             cold_obj.blobs[0].write(blob_data)
+        else:
+             # Fallback if not MemBlob (though it should be)
+             cold_obj.blobs[0].write(blob_data)
+        
         self.cold.seal(create_lease.lease_id)
         self.cold.release(create_lease.lease_id)
 

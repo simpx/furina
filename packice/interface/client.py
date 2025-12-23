@@ -56,6 +56,10 @@ class Object:
     def truncate(self, size: int):
         self._blob.truncate(size)
 
+    def write(self, data: bytes):
+        """Write data to the object."""
+        self._blob.write(data)
+
     def open(self, mode: str = "rb") -> IO:
         """
         Open the blob for reading or writing.
@@ -70,7 +74,13 @@ class Object:
             # Or just return a new file object.
             # If we dup, we need to manage it.
             new_fd = os.dup(handle)
-            return os.fdopen(new_fd, mode)
+            f = os.fdopen(new_fd, mode)
+            try:
+                f.seek(0)
+            except OSError:
+                # Seek might fail on some types of FDs (e.g. pipes), but for files it should work
+                pass
+            return f
         else:
             # Should not happen with NativeBlob
             raise NotImplementedError("Cannot open file-like object for this blob type")
