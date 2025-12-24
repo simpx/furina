@@ -31,16 +31,13 @@ class Object:
         if not self.handles:
             raise ValueError("No handles available")
         
-        # Assuming single blob for now
         handle = self.handles[0]
         intent = self.info.get('intent', 'read')
         mode = "r+b" if intent in ('write', 'create') else "rb"
         
         if isinstance(handle, int):
-            # FD -> MemoryBlobView
             return MemoryBlobView(handle, mode=mode)
         elif isinstance(handle, str):
-            # Path -> FileBlobView
             return FileBlobView(handle, mode=mode)
         elif isinstance(handle, dict) and handle.get('type') == 'shared_fs':
             from ..backends.shared_fs import SharedFSBlobView
@@ -68,24 +65,16 @@ class Object:
         Open the blob for reading or writing.
         Returns a file-like object.
         """
-        # NativeBlob doesn't expose a file object directly in the interface,
-        # but we can implement it or wrap the FD.
-        # For now, let's just return a file object wrapping the FD if possible.
         handle = self._blob.get_handle()
         if isinstance(handle, int):
-            # Duplicate FD to avoid closing the original when file object is closed?
-            # Or just return a new file object.
-            # If we dup, we need to manage it.
             new_fd = os.dup(handle)
             f = os.fdopen(new_fd, mode)
             try:
                 f.seek(0)
             except OSError:
-                # Seek might fail on some types of FDs (e.g. pipes), but for files it should work
                 pass
             return f
         else:
-            # Should not happen with NativeBlob
             raise NotImplementedError("Cannot open file-like object for this blob type")
 
     def get_meta(self, key: str) -> Any:
@@ -162,7 +151,6 @@ class Client:
         obj = self._acquire(object_id, intent="write")
         obj.discard()
 
-# Global registry for named in-process peers
 _LOCAL_PEERS: Dict[str, Any] = {}
 
 def _create_default_peer() -> Peer:
@@ -182,11 +170,9 @@ def connect(target: Union[str, Peer, None] = None) -> Client:
     - connect(peer_instance): Connects to an existing Peer instance.
     """
     if target is None:
-        # Create a new isolated peer
         return Client(_create_default_peer())
     
     if isinstance(target, str) and target.startswith("memory://"):
-        # Connect to a named shared peer
         name = target.replace("memory://", "")
         if not name:
             name = "default"

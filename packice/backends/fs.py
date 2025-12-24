@@ -8,9 +8,7 @@ class FileBlob(Blob):
         self.path = path
         self.file = None
         self.is_sealed = False
-        # Ensure directory exists
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        # Open for writing initially
         self.file = open(path, "wb+")
 
     def write(self, data: bytes) -> int:
@@ -46,12 +44,10 @@ class FileBlob(Blob):
             return
         self.file.flush()
         self.file.close()
-        # Re-open in read-only mode
         self.file = open(self.path, "rb")
         self.is_sealed = True
 
     def get_handle(self) -> Any:
-        # For FS blob, the handle is the path
         return self.path
 
     def close(self) -> None:

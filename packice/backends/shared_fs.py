@@ -62,14 +62,12 @@ class SharedFSBlobView(BlobView):
         return self.file.write(data)
 
     def read(self, size: int = -1, offset: int = 0) -> bytes:
-        # Offset is relative to data_offset
         self.file.seek(self.data_offset + offset)
         return self.file.read(size)
 
     def truncate(self, size: int) -> None:
         if self.is_sealed:
             raise ValueError("Blob is sealed")
-        # Truncate relative to physical file means data_offset + size
         self.file.truncate(self.data_offset + size)
         self.file.flush()
 
@@ -79,15 +77,10 @@ class SharedFSBlobView(BlobView):
             prot |= mmap.PROT_WRITE
         
         try:
-            # Map the whole file, but we should return a slice?
-            # mmap requires offset to be aligned. data_offset is usually page aligned (4096).
-            # So we can map starting from data_offset.
-            length = 0 # Map until end
+            length = 0
             offset = self.data_offset
             
-            # Check if data_offset is multiple of allocation granularity
             if offset % mmap.ALLOCATIONGRANULARITY != 0:
-                # Fallback: map whole file and slice
                 mm = mmap.mmap(self.file.fileno(), 0, prot=prot)
                 return memoryview(mm)[offset:]
             
@@ -128,12 +121,11 @@ class SharedFSBlobView(BlobView):
 
     def close(self) -> None:
         if self.is_sealed:
-            # If sealed, we might want to ensure it's flushed?
             pass
         try:
             self.file.flush()
         except ValueError:
-            pass # File might be closed
+            pass
         self.file.close()
 
     def get_handle(self) -> Dict[str, Any]:
@@ -171,7 +163,6 @@ class SharedFSBlob(Blob):
         self.file = None
         self.is_sealed = False
         
-        # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         self.file = open(path, mode)
@@ -187,14 +178,12 @@ class SharedFSBlob(Blob):
     def _write_header(self, meta: Dict[str, Any]):
         meta_json = json.dumps(meta).encode('utf-8')
         meta_len = len(meta_json)
-        
-        # Calculate offsets
+
         raw_header_size = HEADER_SIZE + meta_len
-        # Align data start to 4096 bytes
+
         self.data_offset = (raw_header_size + ALIGNMENT - 1) & ~(ALIGNMENT - 1)
         padding_len = self.data_offset - raw_header_size
         
-        # Pack header: Magic, Version, Flags, TTL, Reserved, MetaLen, DataOffset
         header_bytes = HEADER_STRUCT.pack(MAGIC, 1, 0, self.ttl, meta_len, self.data_offset)
         self.file.write(header_bytes)
         self.file.write(meta_json)
@@ -274,7 +263,6 @@ class SharedFSBlob(Blob):
                 if magic == MAGIC:
                     flags |= FLAG_SEALED
                     
-                    # Update TTL if provided
                     if new_ttl is not None:
                         ttl = new_ttl
                         
@@ -296,7 +284,6 @@ class SharedFSBlob(Blob):
         return self.file.write(data)
 
     def read(self, size: int = -1, offset: int = 0) -> bytes:
-        # Offset is relative to data_offset
         self.file.seek(self.data_offset + offset)
         return self.file.read(size)
 
@@ -328,7 +315,6 @@ class SharedFSBlob(Blob):
 
     def close(self) -> None:
         if self.is_sealed:
-            # If sealed, we might want to ensure it's flushed?
             pass
         try:
             self.file.flush()

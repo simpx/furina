@@ -32,7 +32,6 @@ class Peer:
         raise NotImplementedError("Peer subclasses must implement create_lease or provide a lease_factory")
 
     def acquire(self, object_id: Optional[str], access: AccessType, ttl: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Tuple[Lease, Object]:
-        # Check for expiration of existing leases first (lazy cleanup)
         self._cleanup_expired_leases()
 
         if object_id is None:
@@ -44,12 +43,8 @@ class Peer:
 
         if access == AccessType.CREATE:
             if obj is not None:
-                # If object exists, we can't create it again unless it's a "restart" or we handle it.
-                # For simplicity, if it exists, fail.
                 raise ValueError(f"Object {object_id} already exists")
             
-            # Create new object
-            # For CREATE, we create the first blob
             blob = self.create_blob(object_id)
             obj = Object(object_id, [blob], meta)
             self.objects[object_id] = obj
@@ -58,18 +53,11 @@ class Peer:
             if obj is None:
                 raise KeyError(f"Object {object_id} not found")
             if not obj.is_sealed():
-                # Can we read while creating? 
-                # v0 design says: "Objects are writable only while in CREATING... SEALED objects are immutable."
-                # Usually read is allowed on SEALED.
-                # If it's CREATING, maybe we can't read yet?
-                # v0: "For read intent, may fail if the node lacks a sealed copy"
                 raise ValueError(f"Object {object_id} is not sealed yet")
 
         elif access == AccessType.WRITE:
             if obj is None:
                 raise KeyError(f"Object {object_id} not found")
-            # In a real system, we might check for other active leases here to ensure exclusivity.
-            # For now, we assume the caller handles coordination or we rely on simple locking.
 
         lease = self.create_lease(object_id, access, ttl)
         self.leases[lease.lease_id] = lease
@@ -111,9 +99,6 @@ class Peer:
         lease = self.leases[lease_id]
         lease.release()
         del self.leases[lease_id]
-        
-        # Check if object should be evicted?
-        # For now, we keep it.
 
     def _get_active_lease(self, lease_id: str, raise_error=True) -> Lease:
         lease = self.leases.get(lease_id)
@@ -128,7 +113,6 @@ class Peer:
         return lease
 
     def _cleanup_expired_leases(self):
-        # Simple lazy cleanup
         expired = [lid for lid, l in self.leases.items() if l.is_expired()]
         for lid in expired:
             self.release(lid)

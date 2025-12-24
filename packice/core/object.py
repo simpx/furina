@@ -23,8 +23,6 @@ class Object:
         for blob in self.blobs:
             blob.seal()
         self.state = ObjectState.SEALED
-        # In a real implementation, we might want to get the size from the blob
-        # self.sealed_size = ... 
 
     def is_sealed(self) -> bool:
         return self.state == ObjectState.SEALED

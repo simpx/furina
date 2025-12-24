@@ -19,11 +19,6 @@ class MemBlob(Blob):
             self.fd = os.memfd_create(name, os.MFD_CLOEXEC)
             self.file = open(self.fd, "wb+", buffering=0)
         else:
-            # Fallback for non-Linux (e.g. macOS)
-            # Create a temporary file that is deleted on close, but we keep it open
-            # Use w+b to ensure read/write
-            # Note: TemporaryFile on macOS/Unix usually unlinks immediately, so we can't open it by path.
-            # But we have the FD.
             self.file = tempfile.TemporaryFile(prefix=f"packice_{name}_", mode="w+b")
             self.fd = self.file.fileno()
 
@@ -42,24 +37,13 @@ class MemBlob(Blob):
         self.file.truncate(size)
 
     def memoryview(self, mode: str = "rb") -> memoryview:
-        # Map the whole file
-        # prot: PROT_READ | PROT_WRITE if mode has 'w' or '+', else PROT_READ
         prot = mmap.PROT_READ
         if 'w' in mode or '+' in mode:
             prot |= mmap.PROT_WRITE
-        
-        # access: ACCESS_WRITE if mode has 'w' or '+', else ACCESS_READ
-        # But mmap.mmap arguments differ by platform slightly or python version.
-        # Usually fileno, length, access=...
-        
-        # For memfd/tempfile, we can map it.
-        # Note: mmap size 0 means whole file.
         try:
             mm = mmap.mmap(self.fd, 0, prot=prot)
             return memoryview(mm)
         except ValueError:
-            # Empty file cannot be mmapped on some systems?
-            # If size is 0, return empty memoryview?
             if os.fstat(self.fd).st_size == 0:
                 return memoryview(b"")
             raise
@@ -68,13 +52,9 @@ class MemBlob(Blob):
         if self.is_sealed:
             return
         self.file.flush()
-        # For memfd/tempfile, we don't necessarily need to close and reopen,
-        # but we should enforce read-only logic in the wrapper.
-        # We keep the FD open.
         self.is_sealed = True
 
     def get_handle(self) -> Any:
-        # Return the file descriptor
         return self.fd
 
     def close(self) -> None:
@@ -83,8 +63,6 @@ class MemBlob(Blob):
 
     def delete(self) -> None:
         self.close()
-        # For memfd, closing the FD releases memory if no other references.
-        # For tempfile, it's deleted on close.
 
 class MemoryBlobView(BlobView):
     """

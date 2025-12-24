@@ -13,7 +13,6 @@ class TieredPeer(Peer):
         self.hot = hot_peer
         self.cold = cold_peer
         self.max_items = max_items
-        # Simple LRU list: [oldest, ..., newest]
         self.lru_list: List[str] = []
 
     def acquire(self, object_id: Optional[str], access: AccessType, ttl: Optional[float] = None, meta: Optional[Dict[str, Any]] = None) -> Tuple[Lease, Object]:
@@ -67,9 +66,6 @@ class TieredPeer(Peer):
         raise ValueError(f"Unknown access type: {access}")
 
     def seal(self, lease_id: str):
-        # We need to find which peer owns this lease
-        # A simple way is to try both, or track it.
-        # Since lease_ids are usually unique, we can try hot first.
         try:
             self.hot.seal(lease_id)
             return
@@ -86,11 +82,6 @@ class TieredPeer(Peer):
 
     def discard(self, lease_id: str):
         try:
-            # Try to get lease info to find object_id for LRU removal
-            # This is tricky because discard() usually consumes the lease.
-            # We might need to peek or rely on the peer to tell us.
-            # But Peer.discard() doesn't return info.
-            # We can try to find the lease in hot.leases first.
             if lease_id in self.hot.leases:
                 lease = self.hot.leases[lease_id]
                 if lease.object_id in self.lru_list:
@@ -109,7 +100,6 @@ class TieredPeer(Peer):
         raise KeyError(f"Lease {lease_id} not found")
 
     def release(self, lease_id: str):
-        # Try both, safe to ignore if not found in one
         self.hot.release(lease_id)
         self.cold.release(lease_id)
 
@@ -120,7 +110,7 @@ class TieredPeer(Peer):
 
     def _ensure_capacity(self):
         while len(self.lru_list) >= self.max_items:
-            victim_id = self.lru_list.pop(0) # Remove oldest
+            victim_id = self.lru_list.pop(0)
             self._evict_to_cold(victim_id)
 
     def _evict_to_cold(self, object_id: str):

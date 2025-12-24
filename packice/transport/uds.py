@@ -51,9 +51,6 @@ class UdsServer:
                 break
 
     def _handle_client(self, sock: socket.socket):
-        # Simple protocol: Read one line (JSON), send one line (JSON) + optional FD
-        # In a real persistent connection, we'd loop.
-        # For v2 POC, let's assume one request per connection or loop until close.
         try:
             with sock:
                 while True:
@@ -77,9 +74,9 @@ class UdsServer:
         cmd = data.get('command')
         
         if cmd == 'acquire':
-            object_id = data.get('object_id') # Can be None
+            object_id = data.get('object_id')
             intent = data['intent']
-            ttl = data.get('ttl_seconds') # Optional for UDS, maybe connection bound?
+            ttl = data.get('ttl_seconds')
             meta = data.get('meta')
             
             if intent == 'create':
@@ -98,7 +95,6 @@ class UdsServer:
                 "intent": intent
             }
             
-            # Check if we need to pass FDs
             handles = []
             if obj:
                 handles = [b.get_handle() for b in obj.blobs]
@@ -119,10 +115,6 @@ class UdsServer:
                 self._send_response(sock, resp)
 
         elif cmd == 'truncate':
-            # New command to handle truncate over UDS if needed, 
-            # but actually truncate is done on the FD directly by the client.
-            # However, if the client doesn't have write permission on the FD (e.g. sealed), it fails.
-            # But here we are talking about CREATE intent.
             pass
 
         elif cmd == 'seal':
@@ -186,7 +178,6 @@ class UdsTransport(Transport):
             }
             sock.sendall(json.dumps(req).encode('utf-8'))
             
-            # Assume max 16 FDs for now
             msg, fds = self._recv_fds(sock, 4096, 16)
             resp = json.loads(msg.decode('utf-8'))
             
