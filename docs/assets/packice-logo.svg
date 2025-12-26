@@ -1,0 +1,38 @@
+<svg width="480" height="320" viewBox="0 0 480 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0E88D3" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#0E88D3" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="crystal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5CD5FF"/>
+      <stop offset="100%" stop-color="#1E6FBF"/>
+    </linearGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F9FBFF"/>
+      <stop offset="100%" stop-color="#DCE9FF"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#0E88D3" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="480" height="320" rx="24" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <path d="M240 56L338 116V204L240 264L142 204V116L240 56Z" fill="#F3F7FB" stroke="#0E88D3" stroke-width="6"/>
+    <path d="M240 86L312 130V190L240 234L168 190V130L240 86Z" fill="url(#box)" stroke="#0E88D3" stroke-width="4"/>
+    <path d="M240 108L284 134V184L240 210L196 184V134L240 108Z" fill="#F3FCFF" stroke="#0E88D3" stroke-width="3"/>
+    <path d="M240 56L338 116L240 176L142 116L240 56Z" fill="url(#crystal)" opacity="0.92"/>
+    <path d="M240 176L338 116V204L240 264V176Z" fill="#0E88D3" opacity="0.12"/>
+    <path d="M240 176L142 116V204L240 264V176Z" fill="#0E88D3" opacity="0.08"/>
+  </g>
+  <g transform="translate(118, 232)">
+    <rect x="0" y="0" width="244" height="48" rx="14" fill="#0E88D3"/>
+    <text x="122" y="32" text-anchor="middle" font-family="'Inter', 'Segoe UI', sans-serif" font-weight="700" font-size="28" fill="#FDFEFF">PACKICE</text>
+  </g>
+  <g transform="translate(340, 106)">
+    <path d="M16 0L46 18V54L16 72L-14 54V18L16 0Z" fill="#F6FCFF" stroke="#0E88D3" stroke-width="3"/>
+    <path d="M16 0L46 18L16 36L-14 18L16 0Z" fill="#9BE8FF" opacity="0.6"/>
+    <path d="M16 36L46 18V54L16 72V36Z" fill="#0E88D3" opacity="0.12"/>
+    <path d="M16 36L-14 18V54L16 72V36Z" fill="#0E88D3" opacity="0.08"/>
+  </g>
+</svg>
